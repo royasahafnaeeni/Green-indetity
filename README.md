@@ -40,10 +40,10 @@ footer{color:var(--muted);font-size:10px;margin-top:28px;line-height:1.8}
     <button data-page="reports"><span class="ico">▥</span><span data-fa="گزارش عملکرد" data-en="Reports">گزارش عملکرد</span></button>
     <button data-page="settings"><span class="ico">⚙</span><span data-fa="تنظیمات و پشتیبان" data-en="Settings & backup">تنظیمات و پشتیبان</span></button>
   </nav>
-  <div class="side-note" data-fa="نسخه آزمایشی آفلاین · اطلاعات در همین مرورگر نگهداری می‌شود. مرتب نسخه پشتیبان بگیرید." data-en="Offline prototype · Data is stored in this browser. Create backups regularly.">نسخه آزمایشی آفلاین · اطلاعات در همین مرورگر نگهداری می‌شود. مرتب نسخه پشتیبان بگیرید.</div>
+  <div class="side-note" data-fa="نمایش عمومی و مدیریت آنلاین · داده‌ها در پایگاه داده مدرسه نگهداری می‌شوند." data-en="Offline prototype · Data is stored in this browser. Create backups regularly.">نمایش عمومی و مدیریت آنلاین · داده‌ها در پایگاه داده مدرسه نگهداری می‌شوند.</div>
 </aside>
 <main>
-  <div class="top"><div><div class="eyebrow" id="dateLabel">آرشیو مدرسه · نسخه اولیه</div><h2 id="pageTitle">نمای کلی</h2></div><div class="actions"><button class="btn" id="langBtn">English</button><button class="btn primary" id="quickAdd">＋ ثبت فعالیت</button></div></div>
+  <div class="top"><div><div class="eyebrow" id="dateLabel">آرشیو مدرسه · نسخه اولیه</div><h2 id="pageTitle">نمای کلی</h2></div><div class="actions"><button class="btn" id="langBtn">English</button><button class="btn" id="authBtn">ورود / حساب کاربری</button><button class="btn primary" id="quickAdd" hidden>＋ ثبت فعالیت</button></div></div>
 
   <section class="page active" id="page-home">
     <div class="hero"><div><h3 data-fa="مدرسه‌ای برای آینده‌ای سبزتر" data-en="A greener school, a better future">مدرسه‌ای برای آینده‌ای سبزتر</h3><p data-fa="اهداف، فعالیت‌ها و مستندات محیط‌زیستی مدرسه؛ ساده، منظم و در دسترس." data-en="School sustainability goals, activities and evidence — clear, organized and accessible.">اهداف، فعالیت‌ها و مستندات محیط‌زیستی مدرسه؛ ساده، منظم و در دسترس.</p></div><div class="hero-mark">🌱</div></div>
@@ -124,7 +124,7 @@ footer{color:var(--muted);font-size:10px;margin-top:28px;line-height:1.8}
       </div>
     </div>
   </section>
-  <footer>نسخه اولیه قابل آزمایش · ذخیره‌سازی محلی در مرورگر · برای حفاظت از داده‌ها نسخه پشتیبان مستقل تهیه کنید.</footer>
+  <footer>اتصال آزمایشی به پایگاه داده آنلاین هویت سبز · دسترسی مدیریتی نیازمند ورود است.</footer>
 </main>
 </div>
 
@@ -143,54 +143,82 @@ footer{color:var(--muted);font-size:10px;margin-top:28px;line-height:1.8}
     </div><br><div class="actions"><button class="btn primary" type="submit">ذخیره پرونده فعالیت</button><button class="btn" type="button" id="cancelModal">انصراف</button></div>
   </form>
 </div></div>
+<div class="modal" id="authModal"><div class="modal-card" style="max-width:430px">
+  <div class="modal-head"><h3>ورود کاربران هویت سبز</h3><button class="close" id="closeAuth">✕</button></div>
+  <form id="loginForm"><div class="field"><label>ایمیل</label><input id="loginEmail" type="email" required autocomplete="username" placeholder="name@example.com"></div><br>
+  <div class="field"><label>رمز عبور</label><input id="loginPassword" type="password" required autocomplete="current-password"></div><br>
+  <button class="btn primary" type="submit">ورود امن</button><p class="file-note">حساب شما پس از ورود، بر اساس نقش ثبت‌شده در سامانه دسترسی می‌گیرد. فقط مدیر اصلی امکان ویرایش دارد؛ سایر کاربران فقط مشاهده می‌کنند.</p></form>
+</div></div>
 <div class="toast" id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const DB_NAME='GreenIdentityArchive', DB_VERSION=1;
-let db, activities=[], lang='fa', editingId=null, pendingLogo=null;
+const SUPABASE_URL='https://fzshwjuxdsezdbgdydid.supabase.co';
+const SUPABASE_KEY='sb_publishable_gsLXIsHl0dHfBlns9m07bA_r2JxVFW0';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let activities=[], goals=[], attachments=[], lang='fa', editingId=null, pendingLogo=null, currentUser=null, currentProfile=null;
 const $=id=>document.getElementById(id);
-function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,DB_VERSION);req.onupgradeneeded=()=>{const d=req.result;if(!d.objectStoreNames.contains('activities'))d.createObjectStore('activities',{keyPath:'id'});if(!d.objectStoreNames.contains('settings'))d.createObjectStore('settings',{keyPath:'key'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
-function store(name,mode='readonly'){return db.transaction(name,mode).objectStore(name)}
-function getAll(){return new Promise((res,rej)=>{const r=store('activities').getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)})}
-function getSetting(key){return new Promise(res=>{const r=store('settings').get(key);r.onsuccess=()=>res(r.result?.value);r.onerror=()=>res(null)})}
-function setSetting(key,value){return new Promise((res,rej)=>{const r=store('settings','readwrite').put({key,value});r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-function saveActivity(a){return new Promise((res,rej)=>{const r=store('activities','readwrite').put(a);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-function deleteActivity(id){return new Promise((res,rej)=>{const r=store('activities','readwrite').delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
-function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3000)}
+// تنها حساب دارای نقش admin و وضعیت فعال اجازه تغییر داده‌ها را دارد.
+const canEdit=()=>!!currentUser && !!currentProfile?.is_active && currentProfile?.role==='admin';
+const isAdmin=()=>canEdit() && currentProfile.role==='admin';
+function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3500)}
 function fmt(n){return lang==='fa'?new Intl.NumberFormat('fa-IR').format(n):String(n)}
-function go(page){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));$('page-'+page).classList.add('active');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));const labels={home:['نمای کلی','Overview'],goals:['اهداف طرح','Program goals'],activities:['فعالیت‌ها','Activities'],gallery:['آرشیو رسانه','Media archive'],reports:['گزارش عملکرد','Reports'],settings:['تنظیمات و پشتیبان','Settings & backup']};$('pageTitle').textContent=labels[page][lang==='fa'?0:1];}
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function render(){
- activities.sort((a,b)=>(b.created||0)-(a.created||0));
- const files=activities.reduce((n,a)=>n+(a.files?.length||0),0),done=activities.filter(a=>a.status==='تکمیل‌شده').length;
- $('statActivities').textContent=fmt(activities.length);$('statFiles').textContent=fmt(files);$('statDone').textContent=fmt(done);
- $('rTotal').textContent=fmt(activities.length);$('rDone').textContent=fmt(done);$('rProgress').textContent=fmt(activities.filter(a=>a.status==='در حال اجرا').length);$('rFiles').textContent=fmt(files);
- const row=a=>`<div class="activity"><div><b>${esc(a.title)}</b><small>${esc(a.category)} · ${esc(a.date||'بدون تاریخ')} · ${esc(a.owner||'بدون مسئول')}</small></div><div style="display:flex;align-items:center;gap:8px"><span class="pill">${esc(a.status)}</span><button class="btn" onclick="editRecord('${a.id}')">ویرایش</button><button class="btn" onclick="removeRecord('${a.id}')">حذف</button></div></div>`;
- $('recentList').innerHTML=activities.length?activities.slice(0,4).map(row).join(''):'<div class="empty"><div class="big">🌿</div>هنوز فعالیتی ثبت نشده است. از دکمه «ثبت فعالیت» شروع کنید.</div>';
- $('allActivities').innerHTML=activities.length?activities.map(row).join(''):'<div class="empty">هنوز پرونده‌ای ثبت نشده است.</div>';
- $('reportList').innerHTML=activities.length?activities.map(a=>`<div class="activity"><div><b>${esc(a.title)}</b><small>${esc(a.category)} · ${esc(a.date||'بدون تاریخ')}</small></div><span class="pill">${esc(a.status)}</span></div>`).join(''):'<div class="empty">برای تهیه گزارش ابتدا فعالیت ثبت کنید.</div>';
- let all=[];activities.forEach(a=>(a.files||[]).forEach(f=>all.push({...f,activity:a.title})));
- $('galleryGrid').innerHTML=all.length?all.map((f,i)=>`<div class="media">${f.type?.startsWith('image/')?`<img src="${f.data}" alt="">`:f.type?.startsWith('video/')?`<video src="${f.data}" controls></video>`:`<div style="height:135px;display:grid;place-items:center;font-size:34px">📄</div>`}<div><b>${esc(f.name)}</b><br><span style="color:#6c7b72">${esc(f.activity)}</span></div></div>`).join(''):'<div class="empty" style="grid-column:1/-1">هنوز فایلی بارگذاری نشده است.</div>';
+function go(page){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));$('page-'+page).classList.add('active');document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));const labels={home:['نمای کلی','Overview'],goals:['اهداف طرح','Program goals'],activities:['فعالیت‌ها','Activities'],gallery:['آرشیو رسانه','Media archive'],reports:['گزارش عملکرد','Reports'],settings:['تنظیمات و پشتیبان','Settings & backup']};$('pageTitle').textContent=labels[page][lang==='fa'?0:1]}
+function setEditorUI(){
+ $('quickAdd').hidden=!canEdit();$('addActivity').hidden=!canEdit();$('saveIdentity').hidden=!canEdit();$('backupBtn').hidden=!canEdit();$('restoreBtn').hidden=!canEdit();$('restoreInput').disabled=!canEdit();$('logoInput').disabled=!canEdit();$('schoolName').disabled=!canEdit();
+ $('authBtn').textContent=currentUser?`خروج (${canEdit()?'مدیر اصلی':'فقط مشاهده'})`:'ورود / حساب کاربری';
+ $('dateLabel').textContent=currentUser?`${currentUser.email} · ${canEdit()?'مدیر اصلی · دسترسی ویرایش':(currentProfile?.is_active?'دسترسی فقط مشاهده':'حساب غیرفعال · نمایش عمومی')}`:'نمایش عمومی · محتوای منتشرشده';
 }
-function showModal(a=null){editingId=a?.id||null;$('activityForm').reset();$('modalTitle').textContent=a?'ویرایش فعالیت':'ثبت فعالیت جدید';if(a){$('aTitle').value=a.title;$('aCategory').value=a.category;$('aDate').value=a.date||'';$('aOwner').value=a.owner||'';$('aStatus').value=a.status;$('aDescription').value=a.description||'';$('aResult').value=a.result||'';} $('activityModal').classList.add('show')}
-window.editRecord=id=>{const a=activities.find(x=>x.id===id);if(a)showModal(a)};
-window.removeRecord=async id=>{if(confirm('این پرونده و پیوست‌های آن حذف شود؟')){await deleteActivity(id);await refresh();toast('پرونده حذف شد.')}};
-async function refresh(){activities=await getAll();render()}
-$('nav').addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b)go(b.dataset.page)});
-document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.goto)));
-$('quickAdd').onclick=$('addActivity').onclick=()=>showModal();
-$('closeModal').onclick=$('cancelModal').onclick=()=>$('activityModal').classList.remove('show');
-$('activityForm').onsubmit=async e=>{e.preventDefault();const old=activities.find(a=>a.id===editingId);const files=[...(old?.files||[])];for(const f of $('aFiles').files){const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)});files.push({name:f.name,type:f.type,data,size:f.size})}
-const a={id:editingId||crypto.randomUUID(),created:old?.created||Date.now(),title:$('aTitle').value.trim(),category:$('aCategory').value,date:$('aDate').value,owner:$('aOwner').value,status:$('aStatus').value,description:$('aDescription').value,result:$('aResult').value,files};await saveActivity(a);$('activityModal').classList.remove('show');await refresh();toast('پرونده با موفقیت ذخیره شد.')};
-$('langBtn').onclick=()=>{lang=lang==='fa'?'en':'fa';document.documentElement.lang=lang;document.documentElement.dir=lang==='fa'?'rtl':'ltr';document.querySelectorAll('[data-fa]').forEach(el=>el.textContent=el.dataset[lang]);$('langBtn').textContent=lang==='fa'?'English':'فارسی';go(document.querySelector('.nav button.active')?.dataset.page||'home')};
-$('saveIdentity').onclick=async()=>{await setSetting('schoolName',$('schoolName').value);if(pendingLogo)await setSetting('logo',pendingLogo);applyIdentity();toast('تنظیمات ذخیره شد.')};
-$('logoInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;pendingLogo=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f)})};
-async function applyIdentity(){const n=await getSetting('schoolName'),l=await getSetting('logo');if(n){$('brandName').textContent=n;$('schoolName').value=n}if(l)$('brandLogo').innerHTML=`<img src="${l}" alt="logo">`}
+async function loadIdentity(){const {data,error}=await sb.from('school_settings').select('school_name,logo_data_url').eq('id',true).maybeSingle();if(error){console.warn(error);return}if(data){$('brandName').textContent=data.school_name||'هویت سبز';$('schoolName').value=data.school_name||'';$('brandLogo').innerHTML=data.logo_data_url?`<img src="${data.logo_data_url}" alt="logo">`:'🌿'}}
+async function loadData(){
+ let aq=sb.from('activities').select('*').order('created_at',{ascending:false});
+ if(!currentUser) aq=aq.eq('is_published',true);
+ const [ar,gr]=await Promise.all([aq,sb.from('goals').select('*').order('created_at',{ascending:true})]);
+ if(ar.error) throw ar.error;if(gr.error) throw gr.error;
+ activities=ar.data||[];goals=currentUser?(gr.data||[]):(gr.data||[]).filter(g=>g.is_published);
+ const ids=activities.map(a=>a.id);attachments=[];
+ if(ids.length){let q=sb.from('activity_attachments').select('*').in('activity_id',ids);if(!currentUser)q=q.eq('is_public',true);const x=await q;if(x.error)throw x.error;attachments=x.data||[]}
+ render();
+}
+function filesFor(id){return attachments.filter(x=>x.activity_id===id)}
+function activityRow(a){const fs=filesFor(a.id);const controls=canEdit()?`<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><span class="pill">${a.is_published?'منتشرشده':'پیش‌نویس'}</span><button class="btn" onclick="editRecord('${a.id}')">ویرایش</button><button class="btn" onclick="togglePublish('${a.id}')">${a.is_published?'لغو انتشار':'انتشار'}</button><button class="btn" onclick="removeRecord('${a.id}')">حذف</button></div>`:`<span class="pill">${esc(a.status)}</span>`;
+ return `<div class="activity"><div style="min-width:0"><b>${esc(a.title)}</b><small>${esc(a.category||'')} · ${esc(a.activity_date||'بدون تاریخ')} · ${esc(a.owner||'بدون مسئول')} · ${fmt(fs.length)} مستند</small>${a.description?`<small>${esc(a.description)}</small>`:''}${a.result?`<small>نتیجه: ${esc(a.result)}</small>`:''}</div>${controls}</div>`}
+function render(){
+ const done=activities.filter(a=>a.status==='تکمیل‌شده').length,files=attachments.length;
+ $('statActivities').textContent=fmt(activities.length);$('statGoals').textContent=fmt(goals.length);$('statFiles').textContent=fmt(files);$('statDone').textContent=fmt(done);
+ $('rTotal').textContent=fmt(activities.length);$('rDone').textContent=fmt(done);$('rProgress').textContent=fmt(activities.filter(a=>a.status==='در حال اجرا').length);$('rFiles').textContent=fmt(files);
+ $('recentList').innerHTML=activities.length?activities.slice(0,4).map(activityRow).join(''):'<div class="empty">هنوز فعالیت منتشرشده‌ای وجود ندارد.</div>';
+ $('allActivities').innerHTML=activities.length?activities.map(activityRow).join(''):'<div class="empty">هنوز پرونده‌ای برای نمایش وجود ندارد.</div>';
+ $('reportList').innerHTML=activities.length?activities.map(a=>`<div class="activity"><div><b>${esc(a.title)}</b><small>${esc(a.category||'')} · ${esc(a.activity_date||'بدون تاریخ')}</small></div><span class="pill">${esc(a.status)}</span></div>`).join(''):'<div class="empty">گزارشی برای نمایش وجود ندارد.</div>';
+ $('galleryGrid').innerHTML=attachments.length?attachments.map(f=>{const url=f._url||'';return `<div class="media">${f.mime_type?.startsWith('image/')?`<img src="${url}" alt="">`:f.mime_type?.startsWith('video/')?`<video src="${url}" controls></video>`:`<div style="height:135px;display:grid;place-items:center;font-size:34px">📄</div>`}<div><b>${esc(f.file_name)}</b><br><span style="color:#6c7b72">${esc(activities.find(a=>a.id===f.activity_id)?.title||'')}</span>${url?`<br><a href="${url}" target="_blank" rel="noopener">مشاهده / دریافت</a>`:''}</div></div>`}).join(''):'<div class="empty" style="grid-column:1/-1">هنوز مستندی برای نمایش وجود ندارد.</div>';
+}
+async function refresh(){await loadData();}
+async function hydrateAttachmentUrls(){for(const f of attachments){if(f.bucket_id==='green-public'){const {data}=sb.storage.from(f.bucket_id).getPublicUrl(f.storage_path);f._url=data.publicUrl}else if(currentUser){const {data,error}=await sb.storage.from(f.bucket_id).createSignedUrl(f.storage_path,3600);if(!error)f._url=data.signedUrl}}}
+async function reload(){await loadData();await hydrateAttachmentUrls();render()}
+async function loadProfile(){if(!currentUser){currentProfile=null;setEditorUI();return}const {data,error}=await sb.from('profiles').select('id,full_name,role,is_active').eq('id',currentUser.id).maybeSingle();if(error)throw error;currentProfile=data;setEditorUI();if(!canEdit()&&data?.role!=='pending')toast('حساب شما فقط دسترسی مشاهده دارد؛ امکان ویرایش فعال نیست.');}
+async function onAuthChanged(session){currentUser=session?.user||null;await loadProfile();await reload();}
+window.editRecord=async id=>{if(!canEdit())return;const a=activities.find(x=>x.id===id);if(!a)return;editingId=id;$('activityForm').reset();$('modalTitle').textContent='ویرایش فعالیت';$('aTitle').value=a.title;$('aCategory').value=a.category||'سایر';$('aDate').value=a.activity_date||'';$('aOwner').value=a.owner||'';$('aStatus').value=a.status||'در حال اجرا';$('aDescription').value=a.description||'';$('aResult').value=a.result||'';$('activityModal').classList.add('show')};
+window.removeRecord=async id=>{if(!canEdit()||!confirm('این پرونده و پیوست‌های آن حذف شود؟'))return;try{const fs=filesFor(id);for(const f of fs)await sb.storage.from(f.bucket_id).remove([f.storage_path]);const {error}=await sb.from('activities').delete().eq('id',id);if(error)throw error;await reload();toast('پرونده حذف شد.')}catch(e){toast('خطا در حذف: '+e.message)}};
+window.togglePublish=async id=>{if(!canEdit())return;const a=activities.find(x=>x.id===id);if(!a)return;try{const next=!a.is_published;const fs=filesFor(id);
+ // Move evidence between private/public buckets so unpublished files are never publicly accessible.
+ for(const f of fs){const target=next?'green-public':'green-private';if(f.bucket_id===target)continue;const {data:blob,error:de}=await sb.storage.from(f.bucket_id).download(f.storage_path);if(de)throw de;const newPath=f.storage_path;const {error:up}=await sb.storage.from(target).upload(newPath,blob,{contentType:f.mime_type||'application/octet-stream',upsert:true});if(up)throw up;const {error:mu}=await sb.from('activity_attachments').update({bucket_id:target,is_public:next}).eq('id',f.id);if(mu)throw mu;await sb.storage.from(f.bucket_id).remove([f.storage_path]);}
+ const {error}=await sb.from('activities').update({is_published:next}).eq('id',id);if(error)throw error;await reload();toast(next?'فعالیت منتشر شد.':'انتشار فعالیت لغو شد.');}catch(e){toast('خطا در تغییر وضعیت انتشار: '+e.message)}};
+function showModal(a=null){if(!canEdit())return;editingId=a?.id||null;$('activityForm').reset();$('modalTitle').textContent='ثبت فعالیت جدید';$('activityModal').classList.add('show')}
+$('nav').addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b)go(b.dataset.page)});document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.goto)));
+$('quickAdd').onclick=$('addActivity').onclick=()=>showModal();$('closeModal').onclick=$('cancelModal').onclick=()=>$('activityModal').classList.remove('show');
+$('activityForm').onsubmit=async e=>{e.preventDefault();if(!canEdit())return;try{const old=activities.find(a=>a.id===editingId);const payload={title:$('aTitle').value.trim(),category:$('aCategory').value,activity_date:$('aDate').value||null,owner:$('aOwner').value,status:$('aStatus').value,description:$('aDescription').value,result:$('aResult').value,created_by:currentUser.id};let id=editingId;if(id){const {error}=await sb.from('activities').update(payload).eq('id',id);if(error)throw error}else{const {data,error}=await sb.from('activities').insert(payload).select('id').single();if(error)throw error;id=data.id}
+ for(const f of $('aFiles').files){const safe=f.name.replace(/[^\p{L}\p{N}._-]/gu,'_');const path=`${id}/${crypto.randomUUID()}-${safe}`;const bucket=old?.is_published?'green-public':'green-private';const {error:up}=await sb.storage.from(bucket).upload(path,f,{contentType:f.type||'application/octet-stream',upsert:false});if(up)throw up;const {error:meta}=await sb.from('activity_attachments').insert({activity_id:id,file_name:f.name,mime_type:f.type,file_size:f.size,bucket_id:bucket,storage_path:path,is_public:bucket==='green-public',uploaded_by:currentUser.id});if(meta)throw meta;}
+ $('activityModal').classList.remove('show');await reload();toast('پرونده در پایگاه داده ذخیره شد.');}catch(err){toast('ذخیره ناموفق بود: '+err.message)}};
+$('authBtn').onclick=async()=>{if(currentUser){if(confirm('از حساب کاربری خارج شوید؟')){await sb.auth.signOut();await onAuthChanged(null)}}else $('authModal').classList.add('show')};$('closeAuth').onclick=()=>$('authModal').classList.remove('show');
+$('loginForm').onsubmit=async e=>{e.preventDefault();const {data,error}=await sb.auth.signInWithPassword({email:$('loginEmail').value.trim(),password:$('loginPassword').value});if(error){toast('ورود انجام نشد: '+error.message);return}$('authModal').classList.remove('show');$('loginPassword').value='';await onAuthChanged(data.session);toast('ورود انجام شد.')};
+sb.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>onAuthChanged(session).catch(e=>toast(e.message)),0)});
+$('saveIdentity').onclick=async()=>{if(!canEdit())return;try{let logo=null;if($('logoInput').files[0]){const f=$('logoInput').files[0];logo=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)})}const patch={school_name:$('schoolName').value.trim(),updated_by:currentUser.id};if(logo)patch.logo_data_url=logo;const {error}=await sb.from('school_settings').update(patch).eq('id',true);if(error)throw error;await loadIdentity();toast('تنظیمات مدرسه ذخیره شد.')}catch(e){toast('ذخیره تنظیمات ناموفق بود: '+e.message)}};
 $('applyTheme').onclick=()=>{document.documentElement.style.setProperty('--forest',$('themeColor').value);toast('رنگ اصلی تغییر کرد.')};
-function download(name,blob){const a=document.createElement('a');const u=URL.createObjectURL(blob);a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500)}
-$('backupBtn').onclick=async()=>{const payload={app:'GreenIdentityArchive',version:1,exportedAt:new Date().toISOString(),activities,settings:{schoolName:await getSetting('schoolName'),logo:await getSetting('logo')}};download('green-identity-backup-'+new Date().toISOString().slice(0,10)+'.json',new Blob([JSON.stringify(payload)],{type:'application/json'}));toast('نسخه پشتیبان آماده شد.')};
-$('restoreBtn').onclick=async()=>{const f=$('restoreInput').files[0];if(!f){toast('ابتدا فایل پشتیبان را انتخاب کنید.');return}if(!confirm('اطلاعات این دستگاه با محتوای نسخه پشتیبان جایگزین شود؟'))return;try{const p=JSON.parse(await f.text());if(p.app!=='GreenIdentityArchive'||!Array.isArray(p.activities))throw Error();for(const a of p.activities)await saveActivity(a);if(p.settings?.schoolName)await setSetting('schoolName',p.settings.schoolName);if(p.settings?.logo)await setSetting('logo',p.settings.logo);await applyIdentity();await refresh();toast('بازیابی انجام شد.')}catch(e){toast('فایل پشتیبان معتبر نیست.')}};
-$('printReport').onclick=()=>window.print();
-(async()=>{try{db=await openDB();await refresh();await applyIdentity();}catch(e){toast('مرورگر اجازه ذخیره‌سازی محلی نداد. از مرورگر به‌روز استفاده کنید.')}})();
+function download(name,blob){const a=document.createElement('a'),u=URL.createObjectURL(blob);a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500)}
+$('backupBtn').onclick=async()=>{if(!canEdit())return;try{const payload={app:'GreenIdentityArchive',version:2,exportedAt:new Date().toISOString(),activities,goals,attachments,schoolName:$('schoolName').value};download('green-identity-cloud-backup-'+new Date().toISOString().slice(0,10)+'.json',new Blob([JSON.stringify(payload)],{type:'application/json'}));toast('نسخه پشتیبان اطلاعات متنی آماده شد؛ فایل‌های رسانه‌ای باید جداگانه از Storage دریافت شوند.')}catch(e){toast(e.message)}};
+$('restoreBtn').onclick=async()=>{if(!canEdit())return;const f=$('restoreInput').files[0];if(!f){toast('ابتدا فایل پشتیبان JSON را انتخاب کنید.');return}if(!confirm('محتوای نسخه پشتیبان به آرشیو آنلاین منتقل شود؟ فعالیت‌ها به‌صورت پیش‌نویس وارد می‌شوند.'))return;try{const pack=JSON.parse(await f.text());if(pack.app!=='GreenIdentityArchive'||!Array.isArray(pack.activities))throw new Error('ساختار فایل پشتیبان معتبر نیست.');for(const old of pack.activities){const row={id:old.id,title:old.title||'فعالیت بدون عنوان',category:old.category||null,activity_date:old.date||null,owner:old.owner||null,status:old.status||'در حال اجرا',description:old.description||null,result:old.result||null,is_published:false,created_by:currentUser.id};const {error:ae}=await sb.from('activities').upsert(row,{onConflict:'id'});if(ae)throw ae;const {data:existing,error:qe}=await sb.from('activity_attachments').select('file_name').eq('activity_id',old.id);if(qe)throw qe;const known=new Set((existing||[]).map(x=>x.file_name));for(const f0 of (old.files||[])){if(known.has(f0.name))continue;const blob=await (await fetch(f0.data)).blob();const path=`${old.id}/${crypto.randomUUID()}-${f0.name.replace(/[^\p{L}\p{N}._-]/gu,'_')}`;const {error:ue}=await sb.storage.from('green-private').upload(path,blob,{contentType:f0.type||blob.type||'application/octet-stream',upsert:false});if(ue)throw ue;const {error:me}=await sb.from('activity_attachments').insert({activity_id:old.id,file_name:f0.name,mime_type:f0.type||blob.type,file_size:f0.size||blob.size,bucket_id:'green-private',storage_path:path,is_public:false,uploaded_by:currentUser.id});if(me)throw me;}}const settingsPatch={school_name:pack.settings?.schoolName||'سوشیانت دانش پویان',updated_by:currentUser.id};if(pack.settings?.logo)settingsPatch.logo_data_url=pack.settings.logo;const {error:se}=await sb.from('school_settings').update(settingsPatch).eq('id',true);if(se)throw se;await loadIdentity();await reload();toast('انتقال پشتیبان انجام شد؛ فعالیت‌ها پیش‌نویس باقی ماندند.')}catch(e){toast('انتقال پشتیبان ناموفق بود: '+e.message)}};$('printReport').onclick=()=>window.print();
+$('langBtn').onclick=()=>{lang=lang==='fa'?'en':'fa';document.documentElement.lang=lang;document.documentElement.dir=lang==='fa'?'rtl':'ltr';document.querySelectorAll('[data-fa]').forEach(el=>el.textContent=el.dataset[lang]);$('langBtn').textContent=lang==='fa'?'English':'فارسی';go(document.querySelector('.nav button.active')?.dataset.page||'home')};
+(async()=>{try{const {data:{session}}=await sb.auth.getSession();currentUser=session?.user||null;await loadProfile();await loadIdentity();await reload();setEditorUI();}catch(e){console.error(e);toast('اتصال به پایگاه داده برقرار نشد: '+e.message)}})();
 </script>
 <style>@media print{.side,.top .actions,.btn,footer{display:none!important}.app{display:block}main{padding:0}.page{display:none!important}#page-reports{display:block!important}.panel,.stat{box-shadow:none}}</style>
 </body></html>
